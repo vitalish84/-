@@ -104,7 +104,16 @@ app.get('/api/dashboard', (_req, res) => {
   res.json(data);
 });
 
-const PORT = 3001;
+// Serve built React app in production
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+const PORT = Number(process.env.PORT) || 3001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
