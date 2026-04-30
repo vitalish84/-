@@ -1,36 +1,102 @@
+import { supabase } from './supabase';
 import type { CategoryData, DashboardEntry, Homeowner, Requirements } from './types';
 
-const BASE = '/api';
+function toHomeowner(row: any): Homeowner {
+  return {
+    id: row.id,
+    name: row.name,
+    apartment: row.apartment,
+    building: row.building ?? '',
+    phone: row.phone ?? '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
-async function req<T>(url: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || 'שגיאה בשרת');
-  }
-  return res.json();
+function toRequirements(row: any): Requirements {
+  return {
+    homeownerId: row.homeowner_id,
+    categories: row.categories ?? {},
+    updatedAt: row.updated_at,
+  };
+}
+
+function throwIf(error: any) {
+  if (error) throw new Error(error.message);
 }
 
 export const api = {
-  getHomeowners: () => req<Homeowner[]>('/homeowners'),
+  getHomeowners: async (): Promise<Homeowner[]> => {
+    const { data, error } = await supabase
+      .from('homeowners')
+      .select('*')
+      .order('created_at');
+    throwIf(error);
+    return (data ?? []).map(toHomeowner);
+  },
 
-  saveHomeowner: (data: Partial<Homeowner>) =>
-    req<Homeowner>('/homeowners', { method: 'POST', body: JSON.stringify(data) }),
+  saveHomeowner: async (input: Partial<Homeowner>): Promise<Homeowner> => {
+    const row = {
+      id: input.id || `h_${Date.now()}`,
+      name: input.name?.trim() ?? '',
+      apartment: input.apartment?.trim() ?? '',
+      building: input.building?.trim() ?? '',
+      phone: input.phone?.trim() ?? '',
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase
+      .from('homeowners')
+      .upsert(row)
+      .select()
+      .single();
+    throwIf(error);
+    return toHomeowner(data);
+  },
 
-  deleteHomeowner: (id: string) =>
-    req<{ success: boolean }>(`/homeowners/${id}`, { method: 'DELETE' }),
+  deleteHomeowner: async (id: string): Promise<{ success: boolean }> => {
+    const { error } = await supabase.from('homeowners').delete().eq('id', id);
+    throwIf(error);
+    return { success: true };
+  },
 
-  getRequirements: (homeownerId: string) =>
-    req<Requirements | null>(`/requirements/${homeownerId}`),
+  getRequirements: async (homeownerId: string): Promise<Requirements | null> => {
+    const { data, error } = await supabase
+      .from('requirements')
+      .select('*')
+      .eq('homeowner_id', homeownerId)
+      .maybeSingle();
+    throwIf(error);
+    return data ? toRequirements(data) : null;
+  },
 
-  saveRequirements: (homeownerId: string, categories: Record<string, CategoryData>) =>
-    req<Requirements>('/requirements', {
-      method: 'POST',
-      body: JSON.stringify({ homeownerId, categories }),
-    }),
+  saveRequirements: async (
+    homeownerId: string,
+    categories: Record<string, CategoryData>
+  ): Promise<Requirements> => {
+    const { data, error } = await supabase
+      .from('requirements')
+      .upsert({ homeowner_id: homeownerId, categories, updated_at: new Date().toISOString() })
+      .select()
+      .single();
+    throwIf(error);
+    return toRequirements(data);
+  },
 
-  getDashboard: () => req<DashboardEntry[]>('/dashboard'),
+  getDashboard: async (): Promise<DashboardEntry[]> => {
+    const [{ data: homeowners, error: he }, { data: requirements, error: re }] =
+      await Promise.all([
+        supabase.from('homeowners').select('*').order('created_at'),
+        supabase.from('requirements').select('*'),
+      ]);
+    throwIf(he);
+    throwIf(re);
+
+    return (homeowners ?? []).map(h => ({
+      ...toHomeowner(h),
+      requirements: (() => {
+        const r = (requirements ?? []).find(r => r.homeowner_id === h.id);
+        return r ? toRequirements(r) : null;
+      })(),
+    }));
+  },
 };
