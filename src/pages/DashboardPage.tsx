@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, TrendingUp, Package, Phone, Building2, Home, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Users, TrendingUp, Package, Phone, Building2, Home, ChevronDown, ChevronUp, RefreshCw, Share2 } from 'lucide-react';
 import { api } from '../api';
 import { CATEGORIES } from '../constants';
 import type { CategoryData, DashboardEntry, Homeowner } from '../types';
@@ -20,6 +20,7 @@ export default function DashboardPage({ currentUser, onGoToQuestionnaire }: Prop
   const [error, setError] = useState('');
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [expandedHomeowner, setExpandedHomeowner] = useState<string | null>(null);
+  const [shareMessage, setShareMessage] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -73,11 +74,46 @@ export default function DashboardPage({ currentUser, onGoToQuestionnaire }: Prop
     .filter(c => c.yesCount + c.maybeCount > 0)
     .sort((a, b) => (b.yesCount + b.maybeCount) - (a.yesCount + a.maybeCount));
 
+  const handleShare = async () => {
+    const topCategories = popularCategories.slice(0, 3);
+    const text = [
+      'עדכון מדשבורד דרישות הדיירים 🏘️',
+      `דיירים רשומים: ${data.length}`,
+      `שאלונים שמולאו: ${filledCount}`,
+      `פרויקטים משותפים פוטנציאליים: ${sharedProjects.length}`,
+      topCategories.length > 0 ? `קטגוריות מובילות: ${topCategories.map(c => `${c.icon} ${c.label}`).join(', ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'דשבורד קהילתי',
+          text,
+        });
+        setShareMessage('הדשבורד שותף בהצלחה');
+      } else {
+        await navigator.clipboard.writeText(text);
+        setShareMessage('סיכום הדשבורד הועתק ללוח');
+      }
+    } catch {
+      setShareMessage('השיתוף בוטל');
+    } finally {
+      setTimeout(() => setShareMessage(''), 2500);
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto px-4 pb-12" dir="rtl">
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 mb-4 text-sm">
           {error}
+        </div>
+      )}
+      {shareMessage && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-xl p-3 mb-4 text-sm">
+          {shareMessage}
         </div>
       )}
 
@@ -231,17 +267,25 @@ export default function DashboardPage({ currentUser, onGoToQuestionnaire }: Prop
 
       {/* All Homeowners */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-3">
           <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-500" />
             כל הדיירים ({data.length})
           </h2>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 font-medium"
-          >
-            <RefreshCw className="w-4 h-4" /> רענן
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              <Share2 className="w-4 h-4" /> שתף
+            </button>
+            <button
+              onClick={load}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 font-medium"
+            >
+              <RefreshCw className="w-4 h-4" /> רענן
+            </button>
+          </div>
         </div>
 
         {data.length === 0 ? (
